@@ -12,6 +12,22 @@ import os
 import sys
 import argparse
 import numpy as np
+# Provide legacy NumPy aliases expected by older SciPy/CEBRA code paths.
+if not hasattr(np, "typeDict"):
+    np.typeDict = np.sctypeDict
+
+if not hasattr(np, "dtypes"):
+    class _CompatDTypes:
+        Float64DType = np.float64
+        Int64DType = np.int64
+
+    np.dtypes = _CompatDTypes()
+
+if not hasattr(np, "int"):
+    np.int = int
+
+if not hasattr(np, "bool"):
+    np.bool = np.bool_
 import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend
 import matplotlib.pyplot as plt
@@ -54,7 +70,10 @@ def load_synthetic_data(dataset_name='continuous-label-poisson'):
     - continuous-label-gaussian
     """
     print(f"Loading synthetic dataset: {dataset_name}")
-    dataset = cebra.datasets.init(dataset_name, download=True)
+    try:
+        dataset = cebra.datasets.init(dataset_name, download=True)
+    except TypeError:
+        dataset = cebra.datasets.init(dataset_name)
     
     # Get neural data and labels
     neural_data = dataset.neural.numpy()
@@ -133,27 +152,34 @@ def create_visualizations(embedding, continuous_labels, output_path):
     
     fig = plt.figure(figsize=(20, 5))
     
-    # Plot 1: 2D embedding colored by continuous label
+    label_array = np.asarray(continuous_labels)
+    if label_array.ndim == 1:
+        label_2d = label_array.reshape(-1, 1)
+    else:
+        label_2d = label_array
+    color_values = label_2d[:, 0]
+    
+    # Plot 1: 2D embedding colored by (first) continuous label dimension
     ax1 = fig.add_subplot(141)
     scatter1 = ax1.scatter(embedding[:, 0], embedding[:, 1], 
-                          c=continuous_labels, cmap='viridis', 
+                          c=color_values, cmap='viridis', 
                           s=1, alpha=0.5)
     ax1.set_xlabel('CEBRA Dimension 1')
     ax1.set_ylabel('CEBRA Dimension 2')
     ax1.set_title('2D CEBRA Embedding')
-    plt.colorbar(scatter1, ax=ax1, label='Continuous Label')
+    plt.colorbar(scatter1, ax=ax1, label='Continuous Label (dim 1)')
     
     # Plot 2: 3D embedding if available
     if embedding.shape[1] >= 3:
         ax2 = fig.add_subplot(142, projection='3d')
         scatter2 = ax2.scatter(embedding[:, 0], embedding[:, 1], embedding[:, 2],
-                              c=continuous_labels, cmap='viridis', 
+                              c=color_values, cmap='viridis', 
                               s=1, alpha=0.5)
         ax2.set_xlabel('Dim 1')
         ax2.set_ylabel('Dim 2')
         ax2.set_zlabel('Dim 3')
         ax2.set_title('3D CEBRA Embedding')
-        plt.colorbar(scatter2, ax=ax2, label='Continuous Label')
+        plt.colorbar(scatter2, ax=ax2, label='Continuous Label (dim 1)')
     
     # Plot 3: Embedding dimensions over time
     ax3 = fig.add_subplot(143)
@@ -168,11 +194,14 @@ def create_visualizations(embedding, continuous_labels, output_path):
     
     # Plot 4: Continuous label over time
     ax4 = fig.add_subplot(144)
-    ax4.plot(time_indices, continuous_labels[time_indices], 
-            color='purple', linewidth=0.8)
+    max_label_dims = min(3, label_2d.shape[1])
+    for idx in range(max_label_dims):
+        ax4.plot(time_indices, label_2d[time_indices, idx], linewidth=0.8, label=f'Label Dim {idx+1}')
     ax4.set_xlabel('Time')
     ax4.set_ylabel('Continuous Label')
     ax4.set_title('Continuous Label Over Time')
+    if label_2d.shape[1] > 1:
+        ax4.legend()
     
     plt.tight_layout()
     
@@ -262,10 +291,13 @@ def main():
     
     # Data arguments
     parser.add_argument('--dataset', type=str, 
-                       default='continuous-label-poisson',
-                       choices=['continuous-label-t', 'continuous-label-uniform',
-                               'continuous-label-laplace', 'continuous-label-poisson',
-                               'continuous-label-gaussian'],
+                       default='demo-continuous',
+                       choices=[
+                            'continuous-label-t', 'continuous-label-uniform',
+                            'continuous-label-laplace', 'continuous-label-poisson',
+                            'continuous-label-gaussian', 'demo-continuous',
+                            'demo-discrete', 'demo-mixed'
+    ],
                        help='Synthetic dataset to use')
     
     # Model arguments
@@ -273,13 +305,13 @@ def main():
                        help='Model architecture')
     parser.add_argument('--output-dimension', type=int, default=3,
                        help='Output embedding dimension')
-    parser.add_argument('--max-iterations', type=int, default=5000,
+    parser.add_argument('--max-iterations', type=int, default=10000,
                        help='Maximum training iterations')
-    parser.add_argument('--batch-size', type=int, default=512,
+    parser.add_argument('--batch-size', type=int, default=1024,
                        help='Batch size for training')
     parser.add_argument('--learning-rate', type=float, default=3e-4,
                        help='Learning rate')
-    parser.add_argument('--temperature', type=float, default=1.0,
+    parser.add_argument('--temperature', type=float, default=0.8,
                        help='Temperature for InfoNCE loss')
     parser.add_argument('--time-offsets', type=int, default=10,
                        help='Time offset for positive pairs')

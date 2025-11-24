@@ -1,0 +1,24 @@
+CEBRA Synthetic Data Experiment Summary
+============================================================
+
+Timestamp: 2025-11-25T01:42:54.593911
+
+Configuration:
+  model_architecture: offset10-model
+  output_dimension: 3
+  max_iterations: 10000
+  batch_size: 1024
+  learning_rate: 0.0003
+  temperature: 0.8
+  time_offsets: 10
+  distance: cosine
+  conditional: time_delta
+  device: cuda
+  dataset: demo-continuous
+
+Metrics:
+  train_r2: 0.5271
+  test_r2: 0.5125
+  prediction_r2: 0.5125
+
+Embedding shape: (1000, 3)
